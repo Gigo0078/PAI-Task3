@@ -54,7 +54,7 @@ class Actor:
         '''
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
-        pass
+        #pass
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -142,8 +142,9 @@ class Agent:
         #pass
         self.actor = Actor()
         self.critic = Critic()
+        self.trainable_params = TrainableParameter()
         #Name parameters from the paper
-        self.log_prob = []
+        #self.log_prob = []
 
     def get_action(self, s: np.ndarray, train: bool) -> np.ndarray:
         """
@@ -160,7 +161,7 @@ class Agent:
         action, log_prob = self.actor.get_action_and_log_prob(s, not(train))
         #Convert the returned tensor action to an nd.array
         action = action.numpy()
-
+        #Need log probability for something -------> ?
 
         assert action.shape == (1,), 'Incorrect action shape.'
         assert isinstance(action, np.ndarray ), 'Action dtype must be np.ndarray' 
@@ -209,8 +210,10 @@ class Agent:
         s_batch, a_batch, r_batch, s_prime_batch = batch
 
         # TODO: Implement Critic(s) update here.
+        reward = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
 
         # TODO: Implement Policy update here
+        policy = np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch])
 
 
 # This main function is provided here to enable some basic testing. 
