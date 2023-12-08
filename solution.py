@@ -23,15 +23,15 @@ class NeuralNetwork(nn.Module):
         # TODO: Implement this function which should define a neural network 
         # with a variable number of hidden layers and hidden units.
         # Here you should define layers which your network will use.
-        self.layer0 = nn.ReLU()
-        self.layer1 = nn.ReLU()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_size = hidden_size
+        self.hidden_layers = hidden_layers
+        self.activation = activation
 
     def forward(self, s: torch.Tensor) -> torch.Tensor:
         # TODO: Implement the forward pass for the neural network you have defined.
-        #pass
-        s = self.layer0(s)
-        s = self.layer1(s)
-        return s
+        pass
     
 class Actor:
     def __init__(self,hidden_size: int, hidden_layers: int, actor_lr: float,
@@ -139,7 +139,11 @@ class Agent:
     def setup_agent(self):
         # TODO: Setup off-policy agent with policy and critic classes. 
         # Feel free to instantiate any other parameters you feel you might need.   
-        pass
+        #pass
+        self.actor = Actor()
+        self.critic = Critic()
+        #Name parameters from the paper
+        self.log_prob = []
 
     def get_action(self, s: np.ndarray, train: bool) -> np.ndarray:
         """
@@ -149,7 +153,14 @@ class Agent:
         :return: np.ndarray,, action to apply on the environment, shape (1,)
         """
         # TODO: Implement a function that returns an action from the policy for the state s.
-        action = np.random.uniform(-1, 1, (1,))
+        #action = np.random.uniform(-1, 1, (1,))
+        #Convert the state to a torch tensor, which is the required input for the actor
+        s = torch.tensor(s)
+        #Import action from the actor
+        action, log_prob = self.actor.get_action_and_log_prob(s, not(train))
+        #Convert the returned tensor action to an nd.array
+        action = action.numpy()
+
 
         assert action.shape == (1,), 'Incorrect action shape.'
         assert isinstance(action, np.ndarray ), 'Action dtype must be np.ndarray' 
