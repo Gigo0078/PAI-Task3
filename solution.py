@@ -23,10 +23,15 @@ class NeuralNetwork(nn.Module):
         # TODO: Implement this function which should define a neural network 
         # with a variable number of hidden layers and hidden units.
         # Here you should define layers which your network will use.
+        self.layer0 = nn.ReLU()
+        self.layer1 = nn.ReLU()
 
     def forward(self, s: torch.Tensor) -> torch.Tensor:
         # TODO: Implement the forward pass for the neural network you have defined.
-        pass
+        #pass
+        s = self.layer0(s)
+        s = self.layer1(s)
+        return s
     
 class Actor:
     def __init__(self,hidden_size: int, hidden_layers: int, actor_lr: float,
