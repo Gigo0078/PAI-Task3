@@ -55,6 +55,8 @@ class Actor:
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
+        self.optimizer = agent.trainable_params.optimizer
+        self.NN_actor = NeuralNetwork()
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -79,6 +81,8 @@ class Actor:
         # TODO: Implement this function which returns an action and its log probability.
         # If working with stochastic policies, make sure that its log_std are clamped 
         # using the clamp_log_std function.
+        if deterministic == False:
+            log_std = self.clamp_log_std(log_std)
         assert action.shape == (state.shape[0], self.action_dim) and \
             log_prob.shape == (state.shape[0], self.action_dim), 'Incorrect shape for action or log_prob.'
         return action, log_prob
@@ -100,7 +104,9 @@ class Critic:
     def setup_critic(self):
         # TODO: Implement this function which sets up the critic(s). Take a look at the NeuralNetwork 
         # class in utils.py. Note that you can have MULTIPLE critic networks in this class.
-        pass
+        #pass
+        self.optimizer = agent.trainable_params.optimizer
+        self.NN_critic = NeuralNetwork()    #---------> Still unsure what they mean by multiple critic networks
 
 class TrainableParameter:
     '''
@@ -145,6 +151,7 @@ class Agent:
         self.trainable_params = TrainableParameter()
         #Name parameters from the paper
         #self.log_prob = []
+        self.Tau = 0.005
 
     def get_action(self, s: np.ndarray, train: bool) -> np.ndarray:
         """
@@ -210,10 +217,17 @@ class Agent:
         s_batch, a_batch, r_batch, s_prime_batch = batch
 
         # TODO: Implement Critic(s) update here.
-        reward = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
+        #Since we're performing an update step, we must include this new sampled batch in the neural network
+        reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
 
         # TODO: Implement Policy update here
-        policy = np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch])
+        policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
+
+        #For sure we will have to perform a gradient update step here
+        self.run_gradient_update_step(Union[self.actor, self.critic], -reward_sampled)  #----------> Not sure what loss to use
+
+        #Hmm still unsure about how we will use the critic target update, also need to figure out what the relevant parameters for this are
+        self.critic_target_update(self.actor.NN_actor,self.critic.NN_critic,self.Tau,True)
 
 
 # This main function is provided here to enable some basic testing. 
