@@ -164,8 +164,9 @@ class Agent:
         #action = np.random.uniform(-1, 1, (1,))
         #Convert the state to a torch tensor, which is the required input for the actor
         s = torch.tensor(s)
-        #Import action from the actor
-        action, log_prob = self.actor.get_action_and_log_prob(s, not(train))
+        #Import action from the actor and discard the log probability here, possibly used elsewhere
+        action, _ = self.actor.get_action_and_log_prob(s, not(train))
+        # only get one action -> we have to sample in get_action_and_log_prob
         #Convert the returned tensor action to an nd.array
         action = action.numpy()
         #Need log probability for something -------> ?
@@ -202,7 +203,7 @@ class Agent:
             else:
                 param_target.data.copy_(param.data)
 
-    def train_agent(self):
+    def train_agent(self):  #------------> ? Christoph is a bit confused, but we need to implement phi, psi and theta gradient updates
         '''
         This function represents one training iteration for the agent. It samples a batch 
         from the replay buffer,and then updates the policy and critic networks 
@@ -223,8 +224,8 @@ class Agent:
         # TODO: Implement Policy update here
         policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
 
-        #For sure we will have to perform a gradient update step here
-        self.run_gradient_update_step(Union[self.actor, self.critic], -reward_sampled)  #----------> Not sure what loss to use
+        #For sure we will have to perform a gradient update step here 
+        self.run_gradient_update_step(Union[self.actor, self.critic], nn.KLDivLoss())  #----------> Not sure what loss to use
 
         #Hmm still unsure about how we will use the critic target update, also need to figure out what the relevant parameters for this are
         self.critic_target_update(self.actor.NN_actor,self.critic.NN_critic,self.Tau,True)
