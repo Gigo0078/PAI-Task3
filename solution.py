@@ -27,11 +27,28 @@ class NeuralNetwork(nn.Module):
         self.output_dim = output_dim
         self.hidden_size = hidden_size
         self.hidden_layers = hidden_layers
-        self.activation = activation
+        self.activations = {
+            'relu': nn.ReLU(),
+            'sigmoid': nn.Sigmoid(),
+            'tanh': nn.Tanh()
+            }
+        self.activation = self.activations[activation]
+        self.input = nn.Linear(self.input_dim, self.hidden_size)
+        self.linears = nn.ModuleList([nn.Linear(self.hidden_size,self.hidden_size) for i in range(self.hidden_layers)])
+        self.putput = nn.Linear(self.hidden_size, self.output_dim)
 
     def forward(self, s: torch.Tensor) -> torch.Tensor:
         # TODO: Implement the forward pass for the neural network you have defined.
-        pass
+        #pass
+        s = self.input(s)
+        s = self.activation(s)
+        for i in range(0,self.hidden_layers):
+            s = self.linears[i](s)
+            s = self.activation(s)
+        s = self.putput(s)
+        s = self.activation(s)
+        return s
+
     
 class Actor:
     def __init__(self,hidden_size: int, hidden_layers: int, actor_lr: float,
@@ -55,8 +72,8 @@ class Actor:
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
-        self.optimizer = agent.trainable_params.optimizer
-        self.NN_actor = NeuralNetwork()
+        self.NN_actor = NeuralNetwork(self.state_dim, 2*self.action_dim, self.hidden_size, self.hidden_layers, "ReLU")
+        self.NN_actor = agent.trainable_params.optimizer
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -105,8 +122,10 @@ class Critic:
         # TODO: Implement this function which sets up the critic(s). Take a look at the NeuralNetwork 
         # class in utils.py. Note that you can have MULTIPLE critic networks in this class.
         #pass
+        #We set the output to 1, but are not sure if the expected value returns a vector
+        self.NN_critic_V = NeuralNetwork(self.state_dim, 1, self.hidden_size, self.hidden_layers, "ReLU")    #---------> Still unsure what they mean by multiple critic networks
+        #self.NN_critic_lr = self.critic_lr
         self.optimizer = agent.trainable_params.optimizer
-        self.NN_critic = NeuralNetwork()    #---------> Still unsure what they mean by multiple critic networks
 
 class TrainableParameter:
     '''
@@ -219,10 +238,10 @@ class Agent:
 
         # TODO: Implement Critic(s) update here.
         #Since we're performing an update step, we must include this new sampled batch in the neural network
-        reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
+        #reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
 
         # TODO: Implement Policy update here
-        policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
+        #policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
 
         #For sure we will have to perform a gradient update step here 
         self.run_gradient_update_step(Union[self.actor, self.critic], nn.KLDivLoss())  #----------> Not sure what loss to use
