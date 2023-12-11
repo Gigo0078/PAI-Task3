@@ -106,7 +106,7 @@ class Actor:
         std = np.exp(log_std)
         #Sample an action from the Gaussian
         action = np.random.normal(mean,np.exp(std))
-        prob = norm(mean,std).pdf(action)
+        prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
         log_prob = np.log(prob)
         assert action.shape == (state.shape[0], self.action_dim) and \
             log_prob.shape == (state.shape[0], self.action_dim), 'Incorrect shape for action or log_prob.'
