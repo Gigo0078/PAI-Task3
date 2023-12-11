@@ -124,6 +124,7 @@ class Critic:
         #pass
         #We set the output to 1, but are not sure if the expected value returns a vector
         self.NN_critic_V = NeuralNetwork(self.state_dim, 1, self.hidden_size, self.hidden_layers, "ReLU")    #---------> Still unsure what they mean by multiple critic networks
+        self.NN_critic_Q = NeuralNetwork(self.state_dim, 1, self.hidden_size, self.hidden_layers, "ReLU")
         #self.NN_critic_lr = self.critic_lr
         self.optimizer = agent.trainable_params.optimizer
 
@@ -165,9 +166,12 @@ class Agent:
         # TODO: Setup off-policy agent with policy and critic classes. 
         # Feel free to instantiate any other parameters you feel you might need.   
         #pass
-        self.actor = Actor()
-        self.critic = Critic()
-        self.trainable_params = TrainableParameter()
+        self.hidden_layers = 2
+        self.hidden_size = 256
+        self.lr = 3E-4
+        self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
+        self.critic = Critic(self.hidden_size, self.hidden_layers, self.lr)
+        #self.trainable_params = TrainableParameter()
         #Name parameters from the paper
         #self.log_prob = []
         self.Tau = 0.005
@@ -239,15 +243,26 @@ class Agent:
         # TODO: Implement Critic(s) update here.
         #Since we're performing an update step, we must include this new sampled batch in the neural network
         #reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
+        self.actor.NN_actor.train() #Train the actor
+        self.critic.NN_critic_V.train() #Train the first critic
+        self.critic.NN_critic_Q.train() #Train the second critic
+
+        #Define their loss functions
+        loss_actor = 0
+        loss_critic_V = 0
+        loss_critic_Q = 0
 
         # TODO: Implement Policy update here
         #policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
 
         #For sure we will have to perform a gradient update step here 
-        self.run_gradient_update_step(Union[self.actor, self.critic], nn.KLDivLoss())  #----------> Not sure what loss to use
+        self.run_gradient_update_step(self.actor, loss_actor)  #----------> Not sure what loss to use
 
         #Hmm still unsure about how we will use the critic target update, also need to figure out what the relevant parameters for this are
-        self.critic_target_update(self.actor.NN_actor,self.critic.NN_critic,self.Tau,True)
+        self.run_gradient_update_step(self.critic, loss_critic_V)
+        self.run_gradient_update_step(self.critic, loss_critic_Q)
+        #Unsure here, what the input and what the output networks are
+        self.critic_target_update(self.actor.NN_actor,self.critic.NN_critic,self.Tau,True)  #--------> Need to find out when to perform a soft and hard update
 
 
 # This main function is provided here to enable some basic testing. 
