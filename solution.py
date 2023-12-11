@@ -98,6 +98,8 @@ class Actor:
         # TODO: Implement this function which returns an action and its log probability.
         # If working with stochastic policies, make sure that its log_std are clamped 
         # using the clamp_log_std function.
+        action, log_std = self.NN_actor(state)  #Returns an action and a probability from the neural network
+        #How are probability and the log standard deviation related?
         if deterministic == False:
             log_std = self.clamp_log_std(log_std)
         assert action.shape == (state.shape[0], self.action_dim) and \
