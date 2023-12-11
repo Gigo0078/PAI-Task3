@@ -7,6 +7,7 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import warnings
 from typing import Union
 from utils import ReplayBuffer, get_env, run_episode
+from scipy.stats import norm
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -98,10 +99,15 @@ class Actor:
         # TODO: Implement this function which returns an action and its log probability.
         # If working with stochastic policies, make sure that its log_std are clamped 
         # using the clamp_log_std function.
-        action, log_std = self.NN_actor(state)  #Returns an action and a probability from the neural network
+        mean, std = self.NN_actor(state)  #Returns an action and a probability from the neural network
         #How are probability and the log standard deviation related?
-        if deterministic == False:
-            log_std = self.clamp_log_std(log_std)
+        if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
+            log_std = self.clamp_log_std(np.log(std))   #The log of the standard deviation must be clamped not the standard deviation
+        std = np.exp(log_std)
+        #Sample an action from the Gaussian
+        action = np.random.normal(mean,np.exp(std))
+        prob = norm(mean,std).pdf(action)
+        log_prob = np.log(prob)
         assert action.shape == (state.shape[0], self.action_dim) and \
             log_prob.shape == (state.shape[0], self.action_dim), 'Incorrect shape for action or log_prob.'
         return action, log_prob
