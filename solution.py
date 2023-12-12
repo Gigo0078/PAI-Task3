@@ -73,8 +73,8 @@ class Actor:
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
-        self.NN_actor = NeuralNetwork(self.state_dim, 2*self.action_dim, self.hidden_size, self.hidden_layers, "ReLU")
-        self.NN_actor = agent.trainable_params.optimizer
+        self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.NN_actor = optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -105,7 +105,7 @@ class Actor:
             log_std = self.clamp_log_std(np.log(std))   #The log of the standard deviation must be clamped not the standard deviation
         std = np.exp(log_std)
         #Sample an action from the Gaussian
-        action = np.random.normal(mean,np.exp(std))
+        action = np.random.normal(mean,std)
         prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
         log_prob = np.log(prob)
         assert action.shape == (state.shape[0], self.action_dim) and \
@@ -131,10 +131,11 @@ class Critic:
         # class in utils.py. Note that you can have MULTIPLE critic networks in this class.
         #pass
         #We set the output to 1, but are not sure if the expected value returns a vector
-        self.NN_critic_V = NeuralNetwork(self.state_dim, 1, self.hidden_size, self.hidden_layers, "ReLU")    #---------> Still unsure what they mean by multiple critic networks
-        self.NN_critic_Q = NeuralNetwork(self.state_dim, 1, self.hidden_size, self.hidden_layers, "ReLU")
         #self.NN_critic_lr = self.critic_lr
-        self.optimizer = agent.trainable_params.optimizer
+        self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.optimizer = optim.Adam(self.NN_critic.parameters(),lr = self.critic_lr)
+        self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
+
 
 class TrainableParameter:
     '''
@@ -178,10 +179,9 @@ class Agent:
         self.hidden_size = 256
         self.lr = 3E-4
         self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
-        self.critic = Critic(self.hidden_size, self.hidden_layers, self.lr)
-        #self.trainable_params = TrainableParameter()
-        #Name parameters from the paper
-        #self.log_prob = []
+        #We define separate critics
+        self.critic_V = Critic(state_dim=self.state_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
+        self.critic_Q = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
         self.Tau = 0.005
 
     def get_action(self, s: np.ndarray, train: bool) -> np.ndarray:
@@ -248,30 +248,31 @@ class Agent:
         batch = self.memory.sample(self.batch_size)
         s_batch, a_batch, r_batch, s_prime_batch = batch
 
-        # TODO: Implement Critic(s) update here.
-        #Since we're performing an update step, we must include this new sampled batch in the neural network
-        #reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
-        self.actor.NN_actor.train() #Train the actor
-        self.critic.NN_critic_V.train() #Train the first critic
-        self.critic.NN_critic_Q.train() #Train the second critic
+        #Get the temperature - We still need to figure out which network uses this
+        alpha = self.critic_Q.temperature.get_param()
+        reward = 1/alpha * r_batch
 
-        #Define their loss functions
-        loss_actor = 0
+        #Store the basic Psi network
+        base_net = self.critic_V.NN_critic()
+
+        #Run a gradient update step for critic V
+        # TODO: Implement Critic(s) update here.
         loss_critic_V = 0
         loss_critic_Q = 0
+        self.run_gradient_update_step(self.critic_V,loss_critic_V)
+        self.run_gradient_update_step(self.critic_Q,loss_critic_Q)
+        self.critic_target_update(base_net,self.critic_V.NN_critic,self.Tau,True)
+        
+        #Since we're performing an update step, we must include this new sampled batch in the neural network
+        #reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
+        #self.actor.NN_actor.train() #Train the actor
+        #self.critic.NN_critic_V.train() #Train the first critic
+        #self.critic.NN_critic_Q.train() #Train the second critic
 
         # TODO: Implement Policy update here
         #policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
-
-        #For sure we will have to perform a gradient update step here 
-        self.run_gradient_update_step(self.actor, loss_actor)  #----------> Not sure what loss to use
-
-        #Hmm still unsure about how we will use the critic target update, also need to figure out what the relevant parameters for this are
-        self.run_gradient_update_step(self.critic, loss_critic_V)
-        self.run_gradient_update_step(self.critic, loss_critic_Q)
-        #Unsure here, what the input and what the output networks are
-        self.critic_target_update(self.actor.NN_actor,self.critic.NN_critic,self.Tau,True)  #--------> Need to find out when to perform a soft and hard update
-
+        loss_actor = 0
+        self.run_gradient_update_step(self.actor, loss_actor)
 
 # This main function is provided here to enable some basic testing. 
 # ANY changes here WON'T take any effect while grading.
