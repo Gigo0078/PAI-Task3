@@ -99,17 +99,29 @@ class Actor:
         # TODO: Implement this function which returns an action and its log probability.
         # If working with stochastic policies, make sure that its log_std are clamped 
         # using the clamp_log_std function.
-        mean, std = self.NN_actor(state)  #Returns an action and a probability from the neural network
-        #How are probability and the log standard deviation related?
-        if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
+        with torch.no_grad():
+
+            state = torch.tensor(state)
+            mean, std = self.NN_actor(state)
             log_std = self.clamp_log_std(np.log(std))   #The log of the standard deviation must be clamped not the standard deviation
-        std = np.exp(log_std)
-        #Sample an action from the Gaussian
-        action = np.random.normal(mean,std)
-        prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
-        log_prob = np.log(prob)
-        assert action.shape == (state.shape[0], self.action_dim) and \
-            log_prob.shape == (state.shape[0], self.action_dim), 'Incorrect shape for action or log_prob.'
+            std = np.exp(log_std)
+
+            if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
+                action = np.random.normal(mean,std)
+                action = torch.tensor([action])
+
+            else:
+                action = mean
+
+            prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
+            log_prob = np.log(prob)
+
+        action = action.reshape((self.action_dim,))
+        log_prob = log_prob.reshape((self.action_dim,))
+
+        assert action.shape == (self.action_dim, ) and \
+            log_prob.shape == (self.action_dim, ), 'Incorrect shape for action or log_prob.'
+        
         return action, log_prob
 
 
@@ -134,7 +146,7 @@ class Critic:
         #self.NN_critic_lr = self.critic_lr
         self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
         self.optimizer = optim.Adam(self.NN_critic.parameters(),lr = self.critic_lr)
-        self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
+        #self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
 
 class TrainableParameter:
@@ -179,9 +191,12 @@ class Agent:
         self.hidden_size = 256
         self.lr = 3E-4
         self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
-        #We define separate critics
-        self.critic_V = Critic(state_dim=self.state_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
-        self.critic_Q = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
+        self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
+        self.critic_Q1 = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
+        #self.critic = Critic(self.hidden_size, self.hidden_layers, self.lr)
+        #self.trainable_params = TrainableParameter(init_param: float, self.lr, train_param: bool)
+        #Name parameters from the paper
+        #self.log_prob = []
         self.Tau = 0.005
         self.gamma = 0.99
 
@@ -249,27 +264,30 @@ class Agent:
         s_batch, a_batch, r_batch, s_prime_batch = batch
 
         #Get the temperature - We still need to figure out which network uses this
-        alpha = self.critic_Q.temperature.get_param()
+        #alpha = self.critic_Q.temperature.get_param()
+        alpha = 0.5
         reward = 1/alpha * r_batch
+        #reward = r_batch + alpha * entropy
 
-        #Store the basic Psi network
-        base_net = self.critic_V.NN_critic()
+        #Store the basic Psi network - which I guess we still need
+        base_net1 = self.critic_Q1.NN_critic()
+        base_net2 = self.critic_Q2.NN_critic()
 
         #Bliblablup for loss functions
         #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
         with torch.no_grad():
             #Sample action and its log_prob
             next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(state=s_prime_batch, deterministic=False)
-            qf1_next = self.critic.NN_critic_Q(s_prime_batch,next_sampled_action)   #Takes in the batch state but sampled action
-            qf2_next = self.critic.NN_critic_V(s_prime_batch,next_sampled_action)
-            #Value function
-            min_qf_next = torch.min(qf1_next,qf2_next) - alpha*next_sampled_log_prob #Here have to be careful with the alpha, either we use it to scale the rewards or we include it in the losses
-            #Q function
+            qf1_next = self.critic.NN_critic_Q1(s_prime_batch,next_sampled_action)   #Takes in the batch state but sampled action
+            qf2_next = self.critic.NN_critic_Q2(s_prime_batch,next_sampled_action)
+            # transform into Value function
+            min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob # * alpha #Here have to be careful with the alpha, either we use it to scale the rewards or we include it in the losses
+            #Q hat function
             next_q_value = reward + self.gamma * min_qf_next
 
         #Get the current values and optimize with respect to the next ones
-        qf1 = self.critic.NN_critic_Q(s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
-        qf2 = self.critic.NN_critic_V(s_batch,a_batch)
+        qf1 = self.critic.NN_critic_Q1(s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
+        qf2 = self.critic.NN_critic_Q2(s_batch,a_batch)
         #Losses for the competing critic networks, represented by theta 1 and 2
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  #Have to figure out what q1 and q2 are
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
@@ -277,35 +295,26 @@ class Agent:
         #Sample current action and its log_prob
         sampled_action, sampled_log_prob = self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
 
-        Q1_pi = self.critic.NN_critic_Q(s_batch,sampled_action)
-        Q2_pi = self.critic.NN_critic_V(s_batch,sampled_action)
+        Q1_pi = self.critic.NN_critic_Q1(s_batch,sampled_action)
+        Q2_pi = self.critic.NN_critic_Q2(s_batch,sampled_action)
         min_q_pi = torch.min(Q1_pi, Q2_pi)
 
         #Optimize the critic networks
         #Run a gradient update step for critic V
         # TODO: Implement Critic(s) update here.
-        self.run_gradient_update_step(self.critic_Q,q1_loss)
-        self.run_gradient_update_step(self.critic_V,q2_loss)
+        self.run_gradient_update_step(self.critic_Q1,q1_loss)
+        self.run_gradient_update_step(self.critic_Q2,q2_loss)
 
         #Policy loss
         # TODO: Implement Policy update here
-        policy_loss = ((self.alpha * sampled_log_prob) - min_q_pi).mean()
+        policy_loss = ((sampled_log_prob) - min_q_pi).mean() # self.alpha * removed
         #Gradient update for policy
         self.run_gradient_update_step(self.actor,policy_loss)
         
         #Critic target update step
-        self.critic_target_update(base_net,self.critic_V.NN_critic,self.Tau,True)
+        self.critic_target_update(base_net1,self.critic_Q1.NN_critic,self.Tau,True)
+        self.critic_target_update(base_net2,self.critic_Q2.NN_critic,self.Tau,True)
 
-        #I think that at the end, we still have to calculate the rewards and stuff relating to the formula given in the task description no?
-        
-        #Since we're performing an update step, we must include this new sampled batch in the neural network
-        #reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
-        #self.actor.NN_actor.train() #Train the actor
-        #self.critic.NN_critic_V.train() #Train the first critic
-        #self.critic.NN_critic_Q.train() #Train the second critic
-
-        
-        #policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
 
 # This main function is provided here to enable some basic testing. 
 # ANY changes here WON'T take any effect while grading.
