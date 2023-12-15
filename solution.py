@@ -243,7 +243,6 @@ class Agent:
         # TODO: Implement one step of training for the agent.
         # Hint: You can use the run_gradient_update_step for each policy and critic.
         # Example: self.run_gradient_update_step(self.policy, policy_loss)
-
         # Batch sampling
         batch = self.memory.sample(self.batch_size)
         s_batch, a_batch, r_batch, s_prime_batch = batch
@@ -255,13 +254,48 @@ class Agent:
         #Store the basic Psi network
         base_net = self.critic_V.NN_critic()
 
+        #Bliblablup for loss functions
+        #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
+        with torch.no_grad():
+            #Sample action and its log_prob
+            next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(state=s_prime_batch, deterministic=False)
+            qf1_next = self.critic.NN_critic_Q(s_prime_batch,next_sampled_action)   #Takes in the batch state but sampled action
+            qf2_next = self.critic.NN_critic_V(s_prime_batch,next_sampled_action)
+            #Value function
+            min_qf_next = torch.min(qf1_next,qf2_next) - alpha*next_sampled_log_prob #Here have to be careful with the alpha, either we use it to scale the rewards or we include it in the losses
+            #Q function
+            next_q_value = reward + self.gamma * min_qf_next
+
+        #Get the current values and optimize with respect to the next ones
+        qf1 = self.critic.NN_critic_Q(s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
+        qf2 = self.critic.NN_critic_V(s_batch,a_batch)
+        #Losses for the competing critic networks, represented by theta 1 and 2
+        q1_loss = nn.functional.mse_loss(qf1, next_q_value)  #Have to figure out what q1 and q2 are
+        q2_loss = nn.functional.mse_loss(qf2,next_q_value)
+
+        #Sample current action and its log_prob
+        sampled_action, sampled_log_prob = self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
+
+        Q1_pi = self.critic.NN_critic_Q(s_batch,sampled_action)
+        Q2_pi = self.critic.NN_critic_V(s_batch,sampled_action)
+        min_q_pi = torch.min(Q1_pi, Q2_pi)
+
+        #Optimize the critic networks
         #Run a gradient update step for critic V
         # TODO: Implement Critic(s) update here.
-        loss_critic_V = 0
-        loss_critic_Q = 0
-        self.run_gradient_update_step(self.critic_V,loss_critic_V)
-        self.run_gradient_update_step(self.critic_Q,loss_critic_Q)
+        self.run_gradient_update_step(self.critic_Q,q1_loss)
+        self.run_gradient_update_step(self.critic_V,q2_loss)
+
+        #Policy loss
+        # TODO: Implement Policy update here
+        policy_loss = ((self.alpha * sampled_log_prob) - min_q_pi).mean()
+        #Gradient update for policy
+        self.run_gradient_update_step(self.actor,policy_loss)
+        
+        #Critic target update step
         self.critic_target_update(base_net,self.critic_V.NN_critic,self.Tau,True)
+
+        #I think that at the end, we still have to calculate the rewards and stuff relating to the formula given in the task description no?
         
         #Since we're performing an update step, we must include this new sampled batch in the neural network
         #reward_sampled = -(s_batch^2 + 0.1*s_prime_batch^2 + 0.001*a_batch^2)
@@ -269,10 +303,8 @@ class Agent:
         #self.critic.NN_critic_V.train() #Train the first critic
         #self.critic.NN_critic_Q.train() #Train the second critic
 
-        # TODO: Implement Policy update here
+        
         #policy = np.transpose(np.array([np.cos(s_batch),np.sin(s_batch),s_prime_batch]))
-        loss_actor = 0
-        self.run_gradient_update_step(self.actor, loss_actor)
 
 # This main function is provided here to enable some basic testing. 
 # ANY changes here WON'T take any effect while grading.
