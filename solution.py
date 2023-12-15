@@ -183,6 +183,7 @@ class Agent:
         self.critic_V = Critic(state_dim=self.state_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
         self.critic_Q = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
         self.Tau = 0.005
+        self.gamma = 0.99
 
     def get_action(self, s: np.ndarray, train: bool) -> np.ndarray:
         """
