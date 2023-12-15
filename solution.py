@@ -74,7 +74,7 @@ class Actor:
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
         self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
-        self.NN_actor = optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
+        self.optimizer= optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -99,9 +99,16 @@ class Actor:
         # TODO: Implement this function which returns an action and its log probability.
         # If working with stochastic policies, make sure that its log_std are clamped 
         # using the clamp_log_std function.
+        
+        
+        
         with torch.no_grad():
 
             state = torch.tensor(state)
+
+            print("State shape:", state.size())
+            print("Actor output shape:", self.NN_actor(state).size())
+
             mean, std = self.NN_actor(state)
             log_std = self.clamp_log_std(np.log(std))   #The log of the standard deviation must be clamped not the standard deviation
             std = np.exp(log_std)
@@ -263,6 +270,10 @@ class Agent:
         batch = self.memory.sample(self.batch_size)
         s_batch, a_batch, r_batch, s_prime_batch = batch
 
+        print("#############################")
+        print("train_agent")
+        print("#############################")
+
         #Get the temperature - We still need to figure out which network uses this
         #alpha = self.critic_Q.temperature.get_param()
         alpha = 0.5
@@ -270,24 +281,29 @@ class Agent:
         #reward = r_batch + alpha * entropy
 
         #Store the basic Psi network - which I guess we still need
-        base_net1 = self.critic_Q1.NN_critic()
-        base_net2 = self.critic_Q2.NN_critic()
+        base_net1 = self.critic_Q1.NN_critic
+        base_net2 = self.critic_Q2.NN_critic
 
         #Bliblablup for loss functions
         #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
         with torch.no_grad():
             #Sample action and its log_prob
+            
             next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(state=s_prime_batch, deterministic=False)
-            qf1_next = self.critic.NN_critic_Q1(s_prime_batch,next_sampled_action)   #Takes in the batch state but sampled action
-            qf2_next = self.critic.NN_critic_Q2(s_prime_batch,next_sampled_action)
+            
+            print("next_sampled_action:", next_sampled_action.shape())
+            
+            qf1_next = self.critic.NN_critic_Q1(torch.cat(s_prime_batch,next_sampled_action, dim = 1))   #Takes in the batch state but sampled action
+            qf2_next = self.critic.NN_critic_Q2(torch.cat(s_prime_batch,next_sampled_action, dim = 1))
+
             # transform into Value function
             min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob # * alpha #Here have to be careful with the alpha, either we use it to scale the rewards or we include it in the losses
             #Q hat function
-            next_q_value = reward + self.gamma * min_qf_next
+            next_q_value = reward + self.gamma * min_qf_next.mean()
 
         #Get the current values and optimize with respect to the next ones
-        qf1 = self.critic.NN_critic_Q1(s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
-        qf2 = self.critic.NN_critic_Q2(s_batch,a_batch)
+        qf1 = self.critic.NN_critic_Q1(torch.cat(s_batch,a_batch, dim = 1))  #Might have to use torch.concat here as the input to the critic networks
+        qf2 = self.critic.NN_critic_Q2(torch.cat(s_batch,a_batch, dim = 1))
         #Losses for the competing critic networks, represented by theta 1 and 2
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  #Have to figure out what q1 and q2 are
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
@@ -295,8 +311,8 @@ class Agent:
         #Sample current action and its log_prob
         sampled_action, sampled_log_prob = self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
 
-        Q1_pi = self.critic.NN_critic_Q1(s_batch,sampled_action)
-        Q2_pi = self.critic.NN_critic_Q2(s_batch,sampled_action)
+        Q1_pi = self.critic.NN_critic_Q1(torch.cat(s_batch,sampled_action, dim = 1))
+        Q2_pi = self.critic.NN_critic_Q2(torch.cat(s_batch,sampled_action, dim = 1))
         min_q_pi = torch.min(Q1_pi, Q2_pi)
 
         #Optimize the critic networks
