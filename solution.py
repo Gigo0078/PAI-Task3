@@ -408,6 +408,17 @@ class Agent:
 
         #Gradient update for policy
         self.run_gradient_update_step(self.actor, policy_loss)
+
+
+        # Temperature (alpha) loss
+        print("------ Training temperature -------")
+
+        H = -1.
+        alpha_loss = - alpha * sampled_log_prob - alpha * H
+
+        self.actor.temperature.optimizer.zero_grad()
+        alpha_loss.mean().backward()
+        self.actor.temperature.optimizer.step()
         
         print("targetnet --> Q1 after gradient, before soft update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
         #Critic target update step
