@@ -119,21 +119,27 @@ class Actor:
             
             log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
             std = torch.exp(log_std)
+            dist = torch.distributions.normal.Normal(mean, std)
 
             if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
                 #action = np.random.normal(mean,std)
                 #eps = np.random.normal(0,1)
                 #action = std*eps + mean
-                action = torch.normal(mean, std)
+                # Any distribution with .has_rsample == True could work based on the application
+                action = dist.rsample() #rsample includes the reparametrization trick
+                #action = torch.normal(mean, std)
                 #action = torch.tensor([action])
 
             else:
                 action = mean
 
             
-
-            prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
-            log_prob = torch.log(torch.tensor(prob))
+            print("That's the mean Christoph the sucker:", mean)
+            print("Get your std here:", std)
+            #prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
+            
+            log_prob = dist.log_prob(action)
+            print("that's the log-probability Christoph the sucker:", log_prob)
 
         action = action.reshape((self.action_dim,))
         log_prob = torch.tensor(log_prob.reshape((self.action_dim,)))
@@ -335,8 +341,11 @@ class Agent:
 
             print("output of neural network", qf1_next[1,])
 
-            min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob 
-            next_q_value = reward + self.gamma * min_qf_next.mean() # 200 x 1
+            min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob
+
+            print("Oliwia's info demit sie irgendwas checkt:",min_qf_next)
+
+            next_q_value = reward + self.gamma * min_qf_next # 200 x 1
 
         print("next_q_value", next_q_value[0:2,:])
 
