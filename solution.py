@@ -75,6 +75,7 @@ class Actor:
         #pass
         self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
         self.optimizer= optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
+        self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -112,23 +113,30 @@ class Actor:
             #print("shape of output", self.NN_actor(state).shape)
             output = self.NN_actor(state)
             mean, std = self.NN_actor(state)
+
+            std = torch.tensor(std)
+            mean = torch.tensor(mean)
             
-            log_std = self.clamp_log_std(np.log(std))   #The log of the standard deviation must be clamped not the standard deviation
-            std = np.exp(log_std)
+            log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
+            std = torch.exp(log_std)
 
             if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
-                action = np.random.normal(mean,std)
+                #action = np.random.normal(mean,std)
+                #eps = np.random.normal(0,1)
+                #action = std*eps + mean
+                action = torch.normal(mean, std)
+                #action = torch.tensor([action])
 
             else:
                 action = mean
 
-            action = torch.tensor([action])
+            
 
             prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
-            log_prob = np.log(prob)
+            log_prob = torch.log(torch.tensor(prob))
 
         action = action.reshape((self.action_dim,))
-        log_prob = log_prob.reshape((self.action_dim,))
+        log_prob = torch.tensor(log_prob.reshape((self.action_dim,)))
 
         assert action.shape == (self.action_dim, ) and \
             log_prob.shape == (self.action_dim, ), 'Incorrect shape for action or log_prob.'
@@ -242,6 +250,7 @@ class Agent:
         return action
 
     @staticmethod
+    # loss: 200 x 1
     def run_gradient_update_step(object: Union[Actor, Critic], loss: torch.Tensor):
         '''
         This function takes in a object containing trainable parameters and an optimizer, 
@@ -269,7 +278,7 @@ class Agent:
             else:
                 param_target.data.copy_(param.data)
 
-    def train_agent(self):  #------------> ? Christoph is a bit confused, but we need to implement phi, psi and theta gradient updates
+    def train_agent(self): 
         '''
         This function represents one training iteration for the agent. It samples a batch 
         from the replay buffer,and then updates the policy and critic networks 
@@ -288,9 +297,10 @@ class Agent:
 
         #Get the temperature - We still need to figure out which network uses this
         #alpha = self.critic_Q.temperature.get_param()
-        alpha = 0.5
-        reward = 1/alpha * r_batch
-        #reward = r_batch + alpha * entropy
+        alpha = torch.tensor(0.5)
+        reward =  1/alpha * r_batch # smth to investigate
+        print("modified reward", reward)
+        #reward = r_batch + alpha * entropy <--
 
         #Store the basic Psi network - which I guess we still need
         base_net1 = self.critic_Q1.NN_critic
@@ -314,8 +324,8 @@ class Agent:
             next_sampled_action = torch.tensor(next_sampled_action).flatten().reshape(self.batch_size, 1)
             next_sampled_log_prob = torch.tensor(next_sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-            #print("next_sampled_action",next_sampled_action )
-            #print("next_sampled_log_prob", next_sampled_log_prob)
+            print("next_sampled_action",next_sampled_action[0:2, :] )
+            print("next_sampled_log_prob", next_sampled_log_prob[0:2,:])
 
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
             print("input looks like", input[0:2,])
@@ -326,13 +336,15 @@ class Agent:
             print("output of neural network", qf1_next[1,])
 
             min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob 
-            next_q_value = reward + self.gamma * min_qf_next
+            next_q_value = reward + self.gamma * min_qf_next.mean() # 200 x 1
+
+        print("next_q_value", next_q_value[0:2,:])
 
         #Get the current values and optimize with respect to the next ones
         input_Q = torch.cat((s_batch, a_batch), dim = 1)
     
-        qf1 = self.critic_Q1.NN_critic(input_Q) 
-        qf2 = self.critic_Q2.NN_critic(input_Q) 
+        qf1 = self.critic_Q1.NN_critic(input_Q) # 200 x 1
+        qf2 = self.critic_Q2.NN_critic(input_Q) # 200 x 1
 
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
