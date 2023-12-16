@@ -3,4 +3,3 @@ cryptography==39.0
 gym[classic_control]==0.26.2
 torch==2.0.1
 moviepy
-scipy==1.10.1

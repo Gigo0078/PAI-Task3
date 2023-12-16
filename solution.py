@@ -128,19 +128,20 @@ class Actor:
                 #action = std*eps + mean
                 # Any distribution with .has_rsample == True could work based on the application
                 action = dist.rsample() #rsample includes the reparametrization trick
+                action = torch.tanh(action)
                 #action = torch.normal(mean, std)
-                #action = torch.tensor([action])
+                #action = torch.tanh(action)
 
             else:
                 action = mean
 
-            
-            #print("m:", mean)
-            #print("Get your std here:", std)
-            #prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
-            
+                        
             log_prob = dist.log_prob(action)
-            #print("that's the log-probability", log_prob)
+            
+            # print("m:", mean)
+            # print("action is:", action)
+            # print("Get your std here:", std)
+            # print("that's the log-probability", log_prob)
 
         action = action.reshape((self.action_dim,))
         log_prob = torch.tensor(log_prob.reshape((self.action_dim,)))
