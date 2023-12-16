@@ -306,7 +306,7 @@ class Agent:
         #alpha = self.critic_Q.temperature.get_param()
         alpha = torch.tensor(0.5)
         reward =  1/alpha * r_batch # smth to investigate
-        print("modified reward", reward)
+        print("modified reward", reward[0:5, :])
         #reward = r_batch + alpha * entropy <--
 
         #Store the basic Psi network - which I guess we still need
@@ -403,8 +403,8 @@ class Agent:
         #Critic target update step
         print("basenet1 -->", base_net1.state_dict()['putput.weight'][0,:5])
 
-        self.critic_target_update(base_net1, self.critic_Q1.NN_critic, 0.5,True)
-        self.critic_target_update(base_net2, self.critic_Q2.NN_critic, 0.5,True)
+        self.critic_target_update(base_net1, self.critic_Q1.NN_critic, self.Tau,True)
+        self.critic_target_update(base_net2, self.critic_Q2.NN_critic, self.Tau,True)
 
         print("Q1 after update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
         
