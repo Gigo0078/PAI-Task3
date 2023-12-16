@@ -74,7 +74,7 @@ class Actor:
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
-        self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu").to(self.device)
         self.optimizer= optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
         self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
@@ -112,8 +112,8 @@ class Actor:
             #print("NN_actor", self.NN_actor )
             #print("output looks like", self.NN_actor(state))
             #print("shape of output", self.NN_actor(state).shape)
-            output = self.NN_actor(state)
-            mean, std = self.NN_actor(state)
+            #output = self.NN_actor(state)
+            mean, std = self.NN_actor(state).to(self.device)
 
             std = torch.tensor(std)
             mean = torch.tensor(mean)
@@ -171,7 +171,7 @@ class Critic:
         #pass
         #We set the output to 1, but are not sure if the expected value returns a vector
         #self.NN_critic_lr = self.critic_lr
-        self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu").to(self.device)
         self.optimizer = optim.Adam(self.NN_critic.parameters(),lr = self.critic_lr)
         #self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
@@ -315,16 +315,18 @@ class Agent:
                                   output_dim = 1, 
                                   hidden_size = 256,
                                   hidden_layers = 2,
-                                  activation="relu") #self.critic_Q1.NN_critic #self.critic_Q1.NN_critic
+                                  activation="relu").to(self.device) #self.critic_Q1.NN_critic #self.critic_Q1.NN_critic
         
         base_net2 = NeuralNetwork(input_dim = self.state_dim + self.action_dim, 
                                   output_dim = 1, 
                                   hidden_size = 256,
                                   hidden_layers = 2,
-                                  activation="relu") #self.critic_Q2.NN_critic
+                                  activation="relu").to(self.device) #self.critic_Q2.NN_critic
 
         base_net1.load_state_dict(copy.deepcopy(self.critic_Q1.NN_critic.state_dict()))
+        base_net1.to(self.device)
         base_net2.load_state_dict(copy.deepcopy(self.critic_Q2.NN_critic.state_dict()))
+        base_net2.to(self.device)
 
 
         print("Q1 before gradient", base_net1.state_dict()['putput.weight'][0,:5])
@@ -348,7 +350,7 @@ class Agent:
             print("next_sampled_action",next_sampled_action[0:2, :] )
             print("next_sampled_log_prob", next_sampled_log_prob[0:2,:])
 
-            input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
+            input = torch.cat((s_prime_batch, next_sampled_action), dim = 1).to(self.device)
             print("input looks like", input[0:5,])
 
             qf1_next = self.critic_Q1.NN_critic(input)   
@@ -365,7 +367,7 @@ class Agent:
         print("next_q_value", next_q_value[0:5,:])
 
         #Get the current values and optimize with respect to the next ones
-        input_Q = torch.cat((s_batch, a_batch), dim = 1)
+        input_Q = torch.cat((s_batch, a_batch), dim = 1).to(self.device)
     
         qf1 = self.critic_Q1.NN_critic(input_Q) # 200 x 1
         qf2 = self.critic_Q2.NN_critic(input_Q) # 200 x 1
@@ -387,7 +389,7 @@ class Agent:
             sampled_action = torch.tensor(sampled_action).flatten().reshape(self.batch_size, 1)
             sampled_log_prob = torch.tensor(sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-        input_policy = torch.cat((s_batch, sampled_action), dim = 1)
+        input_policy = torch.cat((s_batch, sampled_action), dim = 1).to(self.device)
         Q1_pi = self.critic_Q1.NN_critic(input_policy) #s_batch,sampled_action)
         Q2_pi = self.critic_Q2.NN_critic(input_policy) #s_batch,sampled_action)
         min_q_pi = torch.min(Q1_pi, Q2_pi)
