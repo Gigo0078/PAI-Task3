@@ -231,7 +231,7 @@ class Agent:
         #Convert the state to a torch tensor, which is the required input for the actor
         s = torch.tensor(s)
         #Import action from the actor and discard the log probability here, possibly used elsewhere
-        action, _ = self.actor.get_action_and_log_prob(s, not(train))
+        action, _ = self.actor.get_action_and_log_prob(s, False)
         # only get one action -> we have to sample in get_action_and_log_prob
         #Convert the returned tensor action to an nd.array
         action = action.clone().detach().numpy()
@@ -303,7 +303,6 @@ class Agent:
         #Bliblablup for loss functions
         #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
         with torch.no_grad():
-           
 
             results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
             
@@ -365,8 +364,8 @@ class Agent:
 # ANY changes here WON'T take any effect while grading.
 if __name__ == '__main__':
 
-    TRAIN_EPISODES = 50
-    TEST_EPISODES = 300
+    TRAIN_EPISODES = 5
+    TEST_EPISODES = 5
 
     # You may set the save_video param to output the video of one of the evalution episodes, or 
     # you can disable console printing during training and testing by setting verbose to False.
