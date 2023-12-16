@@ -94,7 +94,7 @@ class Actor:
         :param action: torch.Tensor, action the policy returns for the state.
         :param log_prob: log_probability of the the action.
         '''
-        print("input state is", state)
+        #print("input state is", state)
         assert state.shape == (3,) or state.shape[1] == self.state_dim, 'State passed to this method has a wrong shape'
         action , log_prob = torch.zeros(state.shape[0]), torch.ones(state.shape[0])
         # TODO: Implement this function which returns an action and its log probability.
@@ -108,8 +108,8 @@ class Actor:
             state = torch.tensor(state)
 
             #print("NN_actor", self.NN_actor )
-            print("output looks like", self.NN_actor(state))
-            print("shape of output", self.NN_actor(state).shape)
+            #print("output looks like", self.NN_actor(state))
+            #print("shape of output", self.NN_actor(state).shape)
             output = self.NN_actor(state)
             mean, std = self.NN_actor(state)
             
@@ -201,7 +201,7 @@ class Agent:
         self.hidden_layers = 2
         self.hidden_size = 256
         self.lr = 3E-4
-        
+
         self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
         self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,
                                 hidden_size=self.hidden_size, 
@@ -296,77 +296,70 @@ class Agent:
         base_net1 = self.critic_Q1.NN_critic
         base_net2 = self.critic_Q2.NN_critic
 
+        #Optimize the critic networks
+        #Run a gradient update step for critic V
+        # TODO: Implement Critic(s) update here.
+
         #Bliblablup for loss functions
         #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
         with torch.no_grad():
-            #Sample action and its log_prob
-
-            #print("s_primer_batch is", s_prime_batch)
+           
 
             results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
-
-            #print("results_list", results_list[0])
             
             next_sampled_action, next_sampled_log_prob = zip(*results_list)
 
             next_sampled_action = torch.tensor(next_sampled_action).flatten().reshape(self.batch_size, 1)
             next_sampled_log_prob = torch.tensor(next_sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-            print("next_sampled_action",next_sampled_action )
-            print("next_sampled_log_prob", next_sampled_log_prob)
-
-            #print("state shapes", s_batch.shape)
-            #print("actions shape", next_sampled_action.shape)
-            print(next_sampled_action)
+            #print("next_sampled_action",next_sampled_action )
+            #print("next_sampled_log_prob", next_sampled_log_prob)
 
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
 
-            qf1_next = self.critic_Q1.NN_critic(input)   #Takes in the batch state but sampled action
+            qf1_next = self.critic_Q1.NN_critic(input)   
             qf2_next = self.critic_Q2.NN_critic(input)
-            # transform into Value function
-            min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob # * alpha #Here have to be careful with the alpha, either we use it to scale the rewards or we include it in the losses
-            #Q hat function
+
+            min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob 
             next_q_value = reward + self.gamma * min_qf_next.mean()
 
         #Get the current values and optimize with respect to the next ones
-        print("state shapes", s_batch.shape, "actions shape", a_batch.shape)
-        input = torch.cat((s_batch, a_batch), dim = 1)
+        #print("state shapes", s_batch.shape, "actions shape", a_batch.shape)
+        input_Q = torch.cat((s_batch, a_batch), dim = 1)
 
-        print("input shape is", input.shape)
+        #print("input shape is", input_Q.shape)
     
-        qf1 = self.critic_Q1.NN_critic(input) #s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
-        qf2 = self.critic_Q2.NN_critic(input) #s_batch,a_batch)
+        qf1 = self.critic_Q1.NN_critic(input_Q) #s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
+        qf2 = self.critic_Q2.NN_critic(input_Q) #s_batch,a_batch)
         #Losses for the competing critic networks, represented by theta 1 and 2
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  #Have to figure out what q1 and q2 are
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
 
-        #Sample current action and its log_prob
-
-        results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
-
-        sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
-        
-        sampled_action = torch.tensor(sampled_action).flatten().reshape(self.batch_size, 1)
-        sampled_log_prob = torch.tensor(sampled_log_prob).flatten().reshape(self.batch_size, 1)
-
-        input = torch.cat((s_batch, sampled_action), dim = 1)
-
-        Q1_pi = self.critic_Q1.NN_critic(input) #s_batch,sampled_action)
-        Q2_pi = self.critic_Q2.NN_critic(input) #s_batch,sampled_action)
-        min_q_pi = torch.min(Q1_pi, Q2_pi)
-
-        #Optimize the critic networks
-        #Run a gradient update step for critic V
-        # TODO: Implement Critic(s) update here.
-        torch.autograd.set_detect_anomaly(True)
         self.run_gradient_update_step(self.critic_Q1, q1_loss)
         self.run_gradient_update_step(self.critic_Q2, q2_loss)
 
+
+        #Sample current action and its log_prob
+        with torch.no_grad():
+            results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
+
+            sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
+        
+            sampled_action = torch.tensor(sampled_action).flatten().reshape(self.batch_size, 1)
+            sampled_log_prob = torch.tensor(sampled_log_prob).flatten().reshape(self.batch_size, 1)
+
+        input_policy = torch.cat((s_batch, sampled_action), dim = 1)
+        Q1_pi = self.critic_Q1.NN_critic(input_policy) #s_batch,sampled_action)
+        Q2_pi = self.critic_Q2.NN_critic(input_policy) #s_batch,sampled_action)
+        min_q_pi = torch.min(Q1_pi, Q2_pi)
+        
         #Policy loss
         # TODO: Implement Policy update here
-        policy_loss = ((sampled_log_prob) - min_q_pi).mean() # self.alpha * removed
+        policy_loss = ((sampled_log_prob) - min_q_pi) # self.alpha * removed
         #Gradient update for policy
-        self.run_gradient_update_step(self.actor,policy_loss)
+        print("policy update begins!")
+        torch.autograd.set_detect_anomaly(True)
+        self.run_gradient_update_step(self.actor, policy_loss)
         
         #Critic target update step
         self.critic_target_update(base_net1,self.critic_Q1.NN_critic,self.Tau,True)
