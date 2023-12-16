@@ -74,7 +74,8 @@ class Actor:
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
-        self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu").to(self.device)
+        self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.NN_actor.to(self.device)
         self.optimizer= optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
         self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
@@ -171,7 +172,8 @@ class Critic:
         #pass
         #We set the output to 1, but are not sure if the expected value returns a vector
         #self.NN_critic_lr = self.critic_lr
-        self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu").to(self.device)
+        self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.NN_critic.to(self.device)
         self.optimizer = optim.Adam(self.NN_critic.parameters(),lr = self.critic_lr)
         #self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
