@@ -324,20 +324,16 @@ class Agent:
             next_q_value = reward + self.gamma * min_qf_next.mean()
 
         #Get the current values and optimize with respect to the next ones
-        #print("state shapes", s_batch.shape, "actions shape", a_batch.shape)
         input_Q = torch.cat((s_batch, a_batch), dim = 1)
-
-        #print("input shape is", input_Q.shape)
     
-        qf1 = self.critic_Q1.NN_critic(input_Q) #s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
-        qf2 = self.critic_Q2.NN_critic(input_Q) #s_batch,a_batch)
-        #Losses for the competing critic networks, represented by theta 1 and 2
-        q1_loss = nn.functional.mse_loss(qf1, next_q_value)  #Have to figure out what q1 and q2 are
+        qf1 = self.critic_Q1.NN_critic(input_Q) 
+        qf2 = self.critic_Q2.NN_critic(input_Q) 
+
+        q1_loss = nn.functional.mse_loss(qf1, next_q_value)  
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
 
         self.run_gradient_update_step(self.critic_Q1, q1_loss)
         self.run_gradient_update_step(self.critic_Q2, q2_loss)
-
 
         #Sample current action and its log_prob
         with torch.no_grad():
@@ -356,9 +352,8 @@ class Agent:
         #Policy loss
         # TODO: Implement Policy update here
         policy_loss = ((sampled_log_prob) - min_q_pi) # self.alpha * removed
+        
         #Gradient update for policy
-        print("policy update begins!")
-        torch.autograd.set_detect_anomaly(True)
         self.run_gradient_update_step(self.actor, policy_loss)
         
         #Critic target update step
