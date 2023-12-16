@@ -201,9 +201,17 @@ class Agent:
         self.hidden_layers = 2
         self.hidden_size = 256
         self.lr = 3E-4
+        
         self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
-        self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
-        self.critic_Q1 = Critic(state_dim=self.state_dim+self.action_dim,hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, critic_lr=self.lr)
+        self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,
+                                hidden_size=self.hidden_size, 
+                                hidden_layers=self.hidden_layers,
+                                critic_lr=self.lr)
+        
+        self.critic_Q1 = Critic(state_dim=self.state_dim+self.action_dim,
+                                hidden_size=self.hidden_size,
+                                hidden_layers=self.hidden_layers,
+                                critic_lr=self.lr)
         #self.critic = Critic(self.hidden_size, self.hidden_layers, self.lr)
         #self.trainable_params = TrainableParameter(init_param: float, self.lr, train_param: bool)
         #Name parameters from the paper
@@ -226,7 +234,7 @@ class Agent:
         action, _ = self.actor.get_action_and_log_prob(s, not(train))
         # only get one action -> we have to sample in get_action_and_log_prob
         #Convert the returned tensor action to an nd.array
-        action = action.numpy()
+        action = action.clone().detach().numpy()
         #Need log probability for something -------> ?
 
         assert action.shape == (1,), 'Incorrect action shape.'
@@ -293,26 +301,24 @@ class Agent:
         with torch.no_grad():
             #Sample action and its log_prob
 
-            print("s_primer_batch is", s_prime_batch)
-            #s_prime_batch_copy = s_prime_batch.clone().detach()
-            #print("---> s_primer_batch new shape is",s_prime_batch_copy.shape)
-            #print("applying function on tensor")
-            #function = torch.vmap(self.actor.get_action_and_log_prob)
-            #out_action = s_prime_batch_copy.apply_(self.actor.get_action_and_log_prob)
+            #print("s_primer_batch is", s_prime_batch)
 
             results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
 
-            print("results_list", results_list[0])
+            #print("results_list", results_list[0])
             
             next_sampled_action, next_sampled_log_prob = zip(*results_list)
 
-            print("next_sampled_action", next_sampled_action[0], "next_sampled_log_prob", next_sampled_log_prob[0])
+            next_sampled_action = torch.tensor(next_sampled_action).flatten().reshape(self.batch_size, 1)
+            next_sampled_log_prob = torch.tensor(next_sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-            #print("out_action_dim", out_action)
+            print("next_sampled_action",next_sampled_action )
+            print("next_sampled_log_prob", next_sampled_log_prob)
 
-            #next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(state=s_prime_batch, 
-            #                                                                                deterministic=False)
-            
+            #print("state shapes", s_batch.shape)
+            #print("actions shape", next_sampled_action.shape)
+            print(next_sampled_action)
+
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
 
             qf1_next = self.critic_Q1.NN_critic(input)   #Takes in the batch state but sampled action
@@ -323,8 +329,8 @@ class Agent:
             next_q_value = reward + self.gamma * min_qf_next.mean()
 
         #Get the current values and optimize with respect to the next ones
-
-        input = torch.cat((s_batch,a_batch), dim = 1)
+        print("state shapes", s_batch.shape, "actions shape", a_batch.shape)
+        input = torch.cat((s_batch, a_batch), dim = 1)
 
         print("input shape is", input.shape)
     
@@ -339,14 +345,20 @@ class Agent:
         results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
 
         sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
+        
+        sampled_action = torch.tensor(sampled_action).flatten().reshape(self.batch_size, 1)
+        sampled_log_prob = torch.tensor(sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-        Q1_pi = self.critic.NN_critic_Q1(input) #s_batch,sampled_action)
-        Q2_pi = self.critic.NN_critic_Q2(input) #s_batch,sampled_action)
+        input = torch.cat((s_batch, sampled_action), dim = 1)
+
+        Q1_pi = self.critic_Q1.NN_critic(input) #s_batch,sampled_action)
+        Q2_pi = self.critic_Q2.NN_critic(input) #s_batch,sampled_action)
         min_q_pi = torch.min(Q1_pi, Q2_pi)
 
         #Optimize the critic networks
         #Run a gradient update step for critic V
         # TODO: Implement Critic(s) update here.
+        torch.autograd.set_detect_anomaly(True)
         self.run_gradient_update_step(self.critic_Q1, q1_loss)
         self.run_gradient_update_step(self.critic_Q2, q2_loss)
 
