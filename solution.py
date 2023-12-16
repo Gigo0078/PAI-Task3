@@ -311,6 +311,7 @@ class Agent:
 
         #Get the temperature - We still need to figure out which network uses this
         alpha = self.actor.temperature.get_param()
+        print("alpha before optimization", alpha)
         #alpha = torch.tensor(0.5)
         reward =  1/alpha * r_batch # smth to investigate
         print("modified reward", reward[0:5, :])
@@ -416,6 +417,9 @@ class Agent:
         self.critic_target_update(base_net2, self.critic_Q2.NN_critic, self.Tau,True)
 
         print("Q1 after update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
+
+        alpha = self.actor.temperature.get_param()
+        print("alpha after optimization", alpha)
         
 
 
