@@ -115,10 +115,11 @@ class Actor:
 
             if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
                 action = np.random.normal(mean,std)
-                action = torch.tensor([action])
 
             else:
                 action = mean
+
+            action = torch.tensor([action])
 
             prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
             log_prob = np.log(prob)
