@@ -85,7 +85,7 @@ class Actor:
         return torch.clamp(log_std, self.LOG_STD_MIN, self.LOG_STD_MAX)
 
     def get_action_and_log_prob(self, state: torch.Tensor, 
-                                deterministic: bool) -> (torch.Tensor, torch.Tensor):
+                                deterministic: bool = False) -> (torch.Tensor, torch.Tensor):
         '''
         :param state: torch.Tensor, state of the agent
         :param deterministic: boolean, if true return a deterministic action 
@@ -94,6 +94,7 @@ class Actor:
         :param action: torch.Tensor, action the policy returns for the state.
         :param log_prob: log_probability of the the action.
         '''
+        print("input state is", state)
         assert state.shape == (3,) or state.shape[1] == self.state_dim, 'State passed to this method has a wrong shape'
         action , log_prob = torch.zeros(state.shape[0]), torch.ones(state.shape[0])
         # TODO: Implement this function which returns an action and its log probability.
@@ -106,10 +107,12 @@ class Actor:
 
             state = torch.tensor(state)
 
-            print("State shape:", state.size())
-            print("Actor output shape:", self.NN_actor(state).size())
-
+            #print("NN_actor", self.NN_actor )
+            print("output looks like", self.NN_actor(state))
+            print("shape of output", self.NN_actor(state).shape)
+            output = self.NN_actor(state)
             mean, std = self.NN_actor(state)
+            
             log_std = self.clamp_log_std(np.log(std))   #The log of the standard deviation must be clamped not the standard deviation
             std = np.exp(log_std)
 
@@ -289,38 +292,63 @@ class Agent:
         #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
         with torch.no_grad():
             #Sample action and its log_prob
-            
-            next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(state=s_prime_batch, deterministic=False)
-            
-            print("next_sampled_action:", next_sampled_action.shape())
-            
-            qf1_next = self.critic.NN_critic_Q1(torch.cat(s_prime_batch,next_sampled_action, dim = 1))   #Takes in the batch state but sampled action
-            qf2_next = self.critic.NN_critic_Q2(torch.cat(s_prime_batch,next_sampled_action, dim = 1))
 
+            print("s_primer_batch is", s_prime_batch)
+            #s_prime_batch_copy = s_prime_batch.clone().detach()
+            #print("---> s_primer_batch new shape is",s_prime_batch_copy.shape)
+            #print("applying function on tensor")
+            #function = torch.vmap(self.actor.get_action_and_log_prob)
+            #out_action = s_prime_batch_copy.apply_(self.actor.get_action_and_log_prob)
+
+            results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
+
+            print("results_list", results_list[0])
+            
+            next_sampled_action, next_sampled_log_prob = zip(*results_list)
+
+            print("next_sampled_action", next_sampled_action[0], "next_sampled_log_prob", next_sampled_log_prob[0])
+
+            #print("out_action_dim", out_action)
+
+            #next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(state=s_prime_batch, 
+            #                                                                                deterministic=False)
+            
+            input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
+
+            qf1_next = self.critic_Q1.NN_critic(input)   #Takes in the batch state but sampled action
+            qf2_next = self.critic_Q2.NN_critic(input)
             # transform into Value function
             min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob # * alpha #Here have to be careful with the alpha, either we use it to scale the rewards or we include it in the losses
             #Q hat function
             next_q_value = reward + self.gamma * min_qf_next.mean()
 
         #Get the current values and optimize with respect to the next ones
-        qf1 = self.critic.NN_critic_Q1(torch.cat(s_batch,a_batch, dim = 1))  #Might have to use torch.concat here as the input to the critic networks
-        qf2 = self.critic.NN_critic_Q2(torch.cat(s_batch,a_batch, dim = 1))
+
+        input = torch.cat((s_batch,a_batch), dim = 1)
+
+        print("input shape is", input.shape)
+    
+        qf1 = self.critic_Q1.NN_critic(input) #s_batch,a_batch)  #Might have to use torch.concat here as the input to the critic networks
+        qf2 = self.critic_Q2.NN_critic(input) #s_batch,a_batch)
         #Losses for the competing critic networks, represented by theta 1 and 2
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  #Have to figure out what q1 and q2 are
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
 
         #Sample current action and its log_prob
-        sampled_action, sampled_log_prob = self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
 
-        Q1_pi = self.critic.NN_critic_Q1(torch.cat(s_batch,sampled_action, dim = 1))
-        Q2_pi = self.critic.NN_critic_Q2(torch.cat(s_batch,sampled_action, dim = 1))
+        results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
+
+        sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
+
+        Q1_pi = self.critic.NN_critic_Q1(input) #s_batch,sampled_action)
+        Q2_pi = self.critic.NN_critic_Q2(input) #s_batch,sampled_action)
         min_q_pi = torch.min(Q1_pi, Q2_pi)
 
         #Optimize the critic networks
         #Run a gradient update step for critic V
         # TODO: Implement Critic(s) update here.
-        self.run_gradient_update_step(self.critic_Q1,q1_loss)
-        self.run_gradient_update_step(self.critic_Q2,q2_loss)
+        self.run_gradient_update_step(self.critic_Q1, q1_loss)
+        self.run_gradient_update_step(self.critic_Q2, q2_loss)
 
         #Policy loss
         # TODO: Implement Policy update here
