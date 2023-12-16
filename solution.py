@@ -8,6 +8,7 @@ import warnings
 from typing import Union
 from utils import ReplayBuffer, get_env, run_episode
 from scipy.stats import norm
+import copy
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -134,12 +135,12 @@ class Actor:
                 action = mean
 
             
-            print("That's the mean Christoph the sucker:", mean)
-            print("Get your std here:", std)
+            #print("m:", mean)
+            #print("Get your std here:", std)
             #prob = norm(mean,std).pdf(action)   #Have to add scipy.stats.norm to requirements somehow
             
             log_prob = dist.log_prob(action)
-            print("that's the log-probability Christoph the sucker:", log_prob)
+            #print("that's the log-probability", log_prob)
 
         action = action.reshape((self.action_dim,))
         log_prob = torch.tensor(log_prob.reshape((self.action_dim,)))
@@ -214,7 +215,7 @@ class Agent:
         #pass
         self.hidden_layers = 2
         self.hidden_size = 256
-        self.lr = 3E-4
+        self.lr = 0.01#3E-4
 
         self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
         self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,
@@ -309,8 +310,21 @@ class Agent:
         #reward = r_batch + alpha * entropy <--
 
         #Store the basic Psi network - which I guess we still need
-        base_net1 = self.critic_Q1.NN_critic
-        base_net2 = self.critic_Q2.NN_critic
+        base_net1 = NeuralNetwork(input_dim = self.state_dim + self.action_dim, 
+                                  output_dim = 1, 
+                                  hidden_size = 256,
+                                  hidden_layers = 2,
+                                  activation="relu") #self.critic_Q1.NN_critic #self.critic_Q1.NN_critic
+        
+        base_net2 = NeuralNetwork(input_dim = self.state_dim + self.action_dim, 
+                                  output_dim = 1, 
+                                  hidden_size = 256,
+                                  hidden_layers = 2,
+                                  activation="relu") #self.critic_Q2.NN_critic
+
+        base_net1.load_state_dict(copy.deepcopy(self.critic_Q1.NN_critic.state_dict()))
+        base_net2.load_state_dict(copy.deepcopy(self.critic_Q2.NN_critic.state_dict()))
+
 
         print("Q1 before gradient", base_net1.state_dict()['putput.weight'][0,:5])
 
@@ -334,20 +348,20 @@ class Agent:
             print("next_sampled_log_prob", next_sampled_log_prob[0:2,:])
 
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
-            print("input looks like", input[0:2,])
+            print("input looks like", input[0:5,])
 
             qf1_next = self.critic_Q1.NN_critic(input)   
             qf2_next = self.critic_Q2.NN_critic(input)
 
-            print("output of neural network", qf1_next[1,])
+            print("output of neural network", qf1_next[0:5,])
 
             min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob
 
-            print("Oliwia's info demit sie irgendwas checkt:",min_qf_next)
+            print("min_qf_next",min_qf_next[0:5,:])
 
             next_q_value = reward + self.gamma * min_qf_next # 200 x 1
 
-        print("next_q_value", next_q_value[0:2,:])
+        print("next_q_value", next_q_value[0:5,:])
 
         #Get the current values and optimize with respect to the next ones
         input_Q = torch.cat((s_batch, a_batch), dim = 1)
@@ -385,10 +399,12 @@ class Agent:
         #Gradient update for policy
         self.run_gradient_update_step(self.actor, policy_loss)
         
-        print("Q1 after gradient, before soft update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
+        print("targetnet --> Q1 after gradient, before soft update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
         #Critic target update step
-        self.critic_target_update(base_net1,self.critic_Q1.NN_critic,self.Tau,True)
-        self.critic_target_update(base_net2,self.critic_Q2.NN_critic,self.Tau,True)
+        print("basenet1 -->", base_net1.state_dict()['putput.weight'][0,:5])
+
+        self.critic_target_update(base_net1, self.critic_Q1.NN_critic, 0.5,True)
+        self.critic_target_update(base_net2, self.critic_Q2.NN_critic, 0.5,True)
 
         print("Q1 after update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
         
