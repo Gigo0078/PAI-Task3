@@ -9,6 +9,9 @@ from typing import Union
 from utils import ReplayBuffer, get_env, run_episode
 from scipy.stats import norm
 import copy
+import random
+
+random.seed(5)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -114,7 +117,7 @@ class Actor:
             #print("output looks like", self.NN_actor(state))
             #print("shape of output", self.NN_actor(state).shape)
             #output = self.NN_actor(state)
-            mean, std = self.NN_actor(state).to(self.device)
+            mean, std = torch.chunk(self.NN_actor(state), 2, dim=-1)#.to(self.device)
 
             std = torch.tensor(std)
             mean = torch.tensor(mean)
@@ -175,6 +178,7 @@ class Critic:
         self.NN_critic = NeuralNetwork(input_dim = self.state_dim, output_dim=1, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
         self.NN_critic.to(self.device)
         self.optimizer = optim.Adam(self.NN_critic.parameters(),lr = self.critic_lr)
+        #self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
         #self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
 
@@ -306,8 +310,8 @@ class Agent:
         print("#############################")
 
         #Get the temperature - We still need to figure out which network uses this
-        #alpha = self.critic_Q.temperature.get_param()
-        alpha = torch.tensor(0.5)
+        alpha = self.actor.temperature.get_param()
+        #alpha = torch.tensor(0.5)
         reward =  1/alpha * r_batch # smth to investigate
         print("modified reward", reward[0:5, :])
         #reward = r_batch + alpha * entropy <--
@@ -419,7 +423,7 @@ class Agent:
 # ANY changes here WON'T take any effect while grading.
 if __name__ == '__main__':
 
-    TRAIN_EPISODES = 5
+    TRAIN_EPISODES = 10
     TEST_EPISODES = 5
 
     # You may set the save_video param to output the video of one of the evalution episodes, or 
@@ -431,6 +435,7 @@ if __name__ == '__main__':
     env = get_env(g=10.0, train=True)
 
     for EP in range(TRAIN_EPISODES):
+        print("Running episode: ", EP)
         run_episode(env, agent, None, verbose, train=True)
 
     if verbose:
