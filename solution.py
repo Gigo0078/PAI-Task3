@@ -296,6 +296,9 @@ class Agent:
         base_net1 = self.critic_Q1.NN_critic
         base_net2 = self.critic_Q2.NN_critic
 
+        print("Q1 before gradient", base_net1.state_dict()['putput.weight'][0,:5])
+
+
         #Optimize the critic networks
         #Run a gradient update step for critic V
         # TODO: Implement Critic(s) update here.
@@ -315,12 +318,15 @@ class Agent:
             #print("next_sampled_log_prob", next_sampled_log_prob)
 
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1)
+            print("input looks like", input[0:2,])
 
             qf1_next = self.critic_Q1.NN_critic(input)   
             qf2_next = self.critic_Q2.NN_critic(input)
 
+            print("output of neural network", qf1_next[1,])
+
             min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob 
-            next_q_value = reward + self.gamma * min_qf_next.mean()
+            next_q_value = reward + self.gamma * min_qf_next
 
         #Get the current values and optimize with respect to the next ones
         input_Q = torch.cat((s_batch, a_batch), dim = 1)
@@ -330,6 +336,8 @@ class Agent:
 
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
+
+        print("q1 loss", q1_loss)
 
         self.run_gradient_update_step(self.critic_Q1, q1_loss)
         self.run_gradient_update_step(self.critic_Q2, q2_loss)
@@ -350,14 +358,19 @@ class Agent:
         
         #Policy loss
         # TODO: Implement Policy update here
-        policy_loss = ((sampled_log_prob) - min_q_pi) # self.alpha * removed
-        
+        policy_loss = ((sampled_log_prob) - min_q_pi).mean() # self.alpha * removed
+        print("policy loss", policy_loss)
+
         #Gradient update for policy
         self.run_gradient_update_step(self.actor, policy_loss)
         
+        print("Q1 after gradient, before soft update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
         #Critic target update step
         self.critic_target_update(base_net1,self.critic_Q1.NN_critic,self.Tau,True)
         self.critic_target_update(base_net2,self.critic_Q2.NN_critic,self.Tau,True)
+
+        print("Q1 after update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
+        
 
 
 # This main function is provided here to enable some basic testing. 
