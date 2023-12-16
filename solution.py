@@ -215,7 +215,7 @@ class Agent:
         #pass
         self.hidden_layers = 2
         self.hidden_size = 256
-        self.lr = 0.01#3E-4
+        self.lr = 3E-4
 
         self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
         self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,
