@@ -110,54 +110,103 @@ class Actor:
         # TODO: Implement this function which returns an action and its log probability.
         # If working with stochastic policies, make sure that its log_std are clamped 
         # using the clamp_log_std function.
+
+
+        #########   OLD VERSION    #########
         
+        # state = torch.tensor(state)
+
+        # mean, std = torch.chunk(self.NN_actor(state), 2, dim=-1)#.to(self.device)
+
+        # std = torch.tensor(std)
+        # mean = torch.tensor(mean)
         
-        
-        #with torch.no_grad():
+        # log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
+        # std = torch.exp(log_std)
+        # dist = torch.distributions.normal.Normal(mean, std)
 
-        state = torch.tensor(state)
-
-        #print("NN_actor", self.NN_actor )
-        #print("output looks like", self.NN_actor(state))
-        #print("shape of output", self.NN_actor(state).shape)
-        #output = self.NN_actor(state)
-        mean, std = torch.chunk(self.NN_actor(state), 2, dim=-1)#.to(self.device)
-
-        std = torch.tensor(std)
-        mean = torch.tensor(mean)
-        
-        log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
-        std = torch.exp(log_std)
-        dist = torch.distributions.normal.Normal(mean, std)
-
-        if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
-            #action = np.random.normal(mean,std)
-            #eps = np.random.normal(0,1)
-            #action = std*eps + mean
-            # Any distribution with .has_rsample == True could work based on the application
-            action = dist.rsample() #rsample includes the reparametrization trick
-            action = torch.tanh(action)
-            #action = torch.normal(mean, std)
-            #action = torch.tanh(action)
-
-        else:
-            action = mean
+        # if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
+        #     action = dist.rsample() #rsample includes the reparametrization trick
+        #     action = torch.tanh(action)
+        # else:
+        #     action = mean
 
                     
-        log_prob = dist.log_prob(action)
+        # log_prob = dist.log_prob(action)
             
-            # print("m:", mean)
-            # print("action is:", action)
-            # print("Get your std here:", std)
-            # print("that's the log-probability", log_prob)
+        # action = action.reshape((self.action_dim,))
+        # log_prob = torch.tensor(log_prob.reshape((self.action_dim,)))
 
-        action = action.reshape((self.action_dim,))
-        log_prob = torch.tensor(log_prob.reshape((self.action_dim,)))
-
-        assert action.shape == (self.action_dim, ) and \
-            log_prob.shape == (self.action_dim, ), 'Incorrect shape for action or log_prob.'
+        # assert action.shape == (self.action_dim, ) and \
+        #     log_prob.shape == (self.action_dim, ), 'Incorrect shape for action or log_prob.'
         
-        return action, log_prob
+        # return action, log_prob
+
+        ############# TEST VERSION #############
+
+        outputs = self.NN_actor(state)
+
+        if state.shape == (3,): # one state
+            outputs = [outputs]
+
+        #print("outputs", outputs)
+
+        actions, log_probs = [], []
+
+        for out in outputs:
+
+            #print("out", out)
+
+            mean, std = out # need to check if can unpack
+
+            std = torch.tensor(torch.abs(std))
+            mean = torch.tensor(mean)
+
+            log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
+            std = torch.exp(log_std)
+
+            #print("mean", mean)
+            #print("std", std)
+
+            dist = torch.distributions.normal.Normal(mean, std)
+
+            if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
+        
+                action = dist.rsample() #rsample includes the reparametrization trick
+                action = torch.tanh(action)
+
+            else:
+                action = mean
+
+            log_prob = dist.log_prob(action)
+
+            actions.append(action) 
+            log_probs.append(log_prob)
+
+        #print("actions", actions)
+        #print("log_probs", log_probs)
+
+        if state.shape[0] == self.state_dim: # working with a single state
+            
+            actions = torch.tensor(actions).reshape((self.action_dim, ))
+            log_probs = torch.tensor(log_probs).reshape((self.action_dim, ))
+
+        else:  # second dimension is the state shape
+
+            N = state.shape[0]
+            actions = torch.tensor(actions).reshape((N, self.action_dim))
+            log_probs = torch.tensor(log_probs).reshape((N, self.action_dim))
+
+
+        #print("-------after conversion to tensors")
+        #print("actions", actions)
+        #print("log_probs", log_probs)
+
+        assert (actions.shape == (self.action_dim, ) and \
+            log_probs.shape == (self.action_dim, ), 'Incorrect shape for action or log_prob.' ) or \
+                ( actions.shape[1] == self.action_dim and log_probs.shape[1] == self.action_dim )
+             
+        return actions, log_probs
 
 
 class Critic:
@@ -312,6 +361,8 @@ class Agent:
         batch = self.memory.sample(self.batch_size)
         s_batch, a_batch, r_batch, s_prime_batch = batch
 
+        #print("s_batch", s_batch[0:5, :])
+
         print("#############################")
         print("train_agent")
         print("#############################")
@@ -352,15 +403,21 @@ class Agent:
        
         with torch.no_grad():
 
-            results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
+            ###### OLD VERSION #######
+
+            #results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
             
-            next_sampled_action, next_sampled_log_prob = zip(*results_list)
+            #next_sampled_action, next_sampled_log_prob = zip(*results_list)
 
-            next_sampled_action = torch.tensor(next_sampled_action).flatten().reshape(self.batch_size, 1)
-            next_sampled_log_prob = torch.tensor(next_sampled_log_prob).flatten().reshape(self.batch_size, 1)
+            #next_sampled_action = torch.tensor(next_sampled_action).flatten().reshape(self.batch_size, 1)
+            #next_sampled_log_prob = torch.tensor(next_sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-            #print("next_sampled_action",next_sampled_action[0:5,:])
-            #print("next_sampled_log_prob", next_sampled_log_prob[0:5,:])
+            ###### NEW VERSION #########
+
+            next_sampled_action, next_sampled_log_prob = self.actor.get_action_and_log_prob(s_prime_batch, False)
+
+            print("next_sampled_action",next_sampled_action[0:5,:])
+            print("next_sampled_log_prob", next_sampled_log_prob[0:5,:])
 
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1).to(self.device)
             #print("input looks like", input[0:5,])
@@ -401,17 +458,22 @@ class Agent:
 
         
         print("-------- Training Policy Network ---------- ")
-        
-        results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
-        actions = self.actor.NN_actor(s_batch)
 
         with torch.no_grad():
+
+            ###### OLD VERSION #######
+
             #results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
 
-            sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
+            #sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
         
-            sampled_action = torch.tensor(sampled_action).flatten().reshape(self.batch_size, 1)
-            sampled_log_prob = torch.tensor(sampled_log_prob).flatten().reshape(self.batch_size, 1)
+            #sampled_action = torch.tensor(sampled_action).flatten().reshape(self.batch_size, 1)
+            #sampled_log_prob = torch.tensor(sampled_log_prob).flatten().reshape(self.batch_size, 1)
+
+            ####### NEW VERSION ######
+
+            sampled_action, sampled_log_prob = self.actor.get_action_and_log_prob(s_batch, False)
+
 
         input_policy = torch.cat((s_batch, sampled_action), dim = 1).to(self.device)
         Q1_pi = self.critic_Q1.NN_critic(input_policy) #s_batch,sampled_action)
