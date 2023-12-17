@@ -11,7 +11,7 @@ from scipy.stats import norm
 import copy
 import random
 
-random.seed(5)
+torch.manual_seed(5)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -51,7 +51,7 @@ class NeuralNetwork(nn.Module):
             s = self.linears[i](s)
             s = self.activation(s)
         s = self.putput(s)
-        s = self.activation(s)
+        #s = self.activation(s)
         return s
 
     
@@ -77,10 +77,14 @@ class Actor:
         # TODO: Implement this function which sets up the actor network. 
         # Take a look at the NeuralNetwork class in utils.py. 
         #pass
-        self.NN_actor = NeuralNetwork(input_dim=self.state_dim, output_dim=2*self.action_dim, hidden_size=self.hidden_size, hidden_layers=self.hidden_layers, activation="relu")
+        self.NN_actor = NeuralNetwork(input_dim=self.state_dim,
+                                       output_dim=2*self.action_dim,
+                                         hidden_size=self.hidden_size, 
+                                         hidden_layers=self.hidden_layers,
+                                         activation="relu")
         self.NN_actor.to(self.device)
         self.optimizer= optim.Adam(self.NN_actor.parameters(),lr = self.actor_lr)
-        self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
+        #self.temperature = TrainableParameter(init_param=0.005, lr_param=0.1, train_param=True)
 
     def clamp_log_std(self, log_std: torch.Tensor) -> torch.Tensor:
         '''
@@ -222,13 +226,15 @@ class Agent:
         #pass
         self.hidden_layers = 2
         self.hidden_size = 256
-        self.lr = 3E-4
+        self.lr = 3E-3
 
-        self.actor = Actor(self.hidden_size, self.hidden_layers, self.lr)
-        self.critic_Q2 = Critic(state_dim=self.state_dim+self.action_dim,
-                                hidden_size=self.hidden_size, 
-                                hidden_layers=self.hidden_layers,
-                                critic_lr=self.lr)
+        self.actor = Actor(hidden_size = self.hidden_size,
+                           hidden_layers = self.hidden_layers,
+                           actor_lr = self.lr)
+        self.critic_Q2 = Critic(state_dim = self.state_dim+self.action_dim,
+                                hidden_size = self.hidden_size, 
+                                hidden_layers = self.hidden_layers,
+                                critic_lr = self.lr)
         
         self.critic_Q1 = Critic(state_dim=self.state_dim+self.action_dim,
                                 hidden_size=self.hidden_size,
@@ -240,6 +246,7 @@ class Agent:
         #self.log_prob = []
         self.Tau = 0.005
         self.gamma = 0.99
+        self.temperature = TrainableParameter(init_param=0.05, lr_param=0.01, train_param=True)
 
     def get_action(self, s: np.ndarray, train: bool) -> np.ndarray:
         """
@@ -310,7 +317,7 @@ class Agent:
         print("#############################")
 
         #Get the temperature - We still need to figure out which network uses this
-        alpha = self.actor.temperature.get_param()
+        alpha = self.temperature.get_param()
         print("alpha before optimization", alpha)
         #alpha = torch.tensor(0.5)
         reward =  1/alpha * r_batch # smth to investigate
@@ -335,16 +342,14 @@ class Agent:
         base_net2.load_state_dict(copy.deepcopy(self.critic_Q2.NN_critic.state_dict()))
         base_net2.to(self.device)
 
-
-        print("Q1 before gradient", base_net1.state_dict()['putput.weight'][0,:5])
-
+        #print("Q1 before gradient", base_net1.state_dict()['putput.weight'][0,:5])
 
         #Optimize the critic networks
         #Run a gradient update step for critic V
         # TODO: Implement Critic(s) update here.
 
-        #Bliblablup for loss functions
-        #Determine Thetas from their according neural networks with the given state input - Should rename the networks accordingly
+        print(" ------- Training Critic networks -------- ")
+       
         with torch.no_grad():
 
             results_list = [self.actor.get_action_and_log_prob(state, False) for state in s_prime_batch] 
@@ -354,24 +359,21 @@ class Agent:
             next_sampled_action = torch.tensor(next_sampled_action).flatten().reshape(self.batch_size, 1)
             next_sampled_log_prob = torch.tensor(next_sampled_log_prob).flatten().reshape(self.batch_size, 1)
 
-            print("next_sampled_action",next_sampled_action[0:2, :] )
-            print("next_sampled_log_prob", next_sampled_log_prob[0:2,:])
+            #print("next_sampled_action",next_sampled_action[0:5,:])
+            #print("next_sampled_log_prob", next_sampled_log_prob[0:5,:])
 
             input = torch.cat((s_prime_batch, next_sampled_action), dim = 1).to(self.device)
-            print("input looks like", input[0:5,])
-
+            #print("input looks like", input[0:5,])
             qf1_next = self.critic_Q1.NN_critic(input)   
             qf2_next = self.critic_Q2.NN_critic(input)
 
-            print("output of neural network", qf1_next[0:5,])
-
+            #print("Total number of zero outputs", (qf1_next == 0).sum(), "out of", qf1_next.shape)
             min_qf_next = torch.min(qf1_next,qf2_next) - next_sampled_log_prob
 
-            print("min_qf_next",min_qf_next[0:5,:])
-
+            #print("min_qf_next",min_qf_next[0:5,:])
             next_q_value = reward + self.gamma * min_qf_next # 200 x 1
 
-        print("next_q_value", next_q_value[0:5,:])
+        #print("next_q_value", next_q_value[0:5,:])
 
         #Get the current values and optimize with respect to the next ones
         input_Q = torch.cat((s_batch, a_batch), dim = 1).to(self.device)
@@ -379,15 +381,26 @@ class Agent:
         qf1 = self.critic_Q1.NN_critic(input_Q) # 200 x 1
         qf2 = self.critic_Q2.NN_critic(input_Q) # 200 x 1
 
+        #print("Total number of zero outputs", (qf1 == 0).sum(), "out of", qf1.shape)
+
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
 
-        print("q1 loss", q1_loss)
+        #print("q1 loss", q1_loss)
 
         self.run_gradient_update_step(self.critic_Q1, q1_loss)
         self.run_gradient_update_step(self.critic_Q2, q2_loss)
 
+        # print some gradients
+
+        #print("grad of NN_critic Q1 putput weight", self.critic_Q1.NN_critic.putput.weight.grad)
+        #print("grad of NN_critic Q1 input weight", self.critic_Q1.NN_critic.input.weight.grad)
+        #print("grad of NN_critic Q2", )
+
         #Sample current action and its log_prob
+
+        
+        print("-------- Training Policy Network ---------- ")
         with torch.no_grad():
             results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
 
@@ -400,15 +413,23 @@ class Agent:
         Q1_pi = self.critic_Q1.NN_critic(input_policy) #s_batch,sampled_action)
         Q2_pi = self.critic_Q2.NN_critic(input_policy) #s_batch,sampled_action)
         min_q_pi = torch.min(Q1_pi, Q2_pi)
+
+        print("sampled actions are", sampled_action[0:5,:] )
+        print("sampled log probs are", sampled_log_prob[0:5,:] )
         
         #Policy loss
+
+
         # TODO: Implement Policy update here
-        policy_loss = ((sampled_log_prob) - min_q_pi).mean() # self.alpha * removed
-        print("policy loss", policy_loss)
+        policy_loss = ((sampled_log_prob) - min_q_pi) # self.alpha * removed
+        print("policy loss", policy_loss[0:5,])
 
         #Gradient update for policy
         self.run_gradient_update_step(self.actor, policy_loss)
 
+        print("grad of policy network", self.actor.NN_actor.input.weight.grad)
+
+        # print some gradients
 
         # Temperature (alpha) loss
         print("------ Training temperature -------")
@@ -416,21 +437,21 @@ class Agent:
         H = -1.
         alpha_loss = - alpha * sampled_log_prob - alpha * H
 
-        self.actor.temperature.optimizer.zero_grad()
+        self.temperature.optimizer.zero_grad()
         alpha_loss.mean().backward()
-        self.actor.temperature.optimizer.step()
+        self.temperature.optimizer.step()
         
-        print("targetnet --> Q1 after gradient, before soft update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
+        #print("targetnet --> Q1 after gradient, before soft update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
         #Critic target update step
-        print("basenet1 -->", base_net1.state_dict()['putput.weight'][0,:5])
+        #print("basenet1 -->", base_net1.state_dict()['putput.weight'][0,:5])
 
         self.critic_target_update(base_net1, self.critic_Q1.NN_critic, self.Tau,True)
         self.critic_target_update(base_net2, self.critic_Q2.NN_critic, self.Tau,True)
 
-        print("Q1 after update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
+        #print("Q1 after update", self.critic_Q1.NN_critic.state_dict()['putput.weight'][0,:5])
 
-        alpha = self.actor.temperature.get_param()
-        print("alpha after optimization", alpha)
+        #alpha = self.temperature.get_param()
+        #print("alpha after optimization", alpha)
         
 
 
