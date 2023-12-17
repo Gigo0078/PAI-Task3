@@ -113,38 +113,38 @@ class Actor:
         
         
         
-        with torch.no_grad():
+        #with torch.no_grad():
 
-            state = torch.tensor(state)
+        state = torch.tensor(state)
 
-            #print("NN_actor", self.NN_actor )
-            #print("output looks like", self.NN_actor(state))
-            #print("shape of output", self.NN_actor(state).shape)
-            #output = self.NN_actor(state)
-            mean, std = torch.chunk(self.NN_actor(state), 2, dim=-1)#.to(self.device)
+        #print("NN_actor", self.NN_actor )
+        #print("output looks like", self.NN_actor(state))
+        #print("shape of output", self.NN_actor(state).shape)
+        #output = self.NN_actor(state)
+        mean, std = torch.chunk(self.NN_actor(state), 2, dim=-1)#.to(self.device)
 
-            std = torch.tensor(std)
-            mean = torch.tensor(mean)
-            
-            log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
-            std = torch.exp(log_std)
-            dist = torch.distributions.normal.Normal(mean, std)
+        std = torch.tensor(std)
+        mean = torch.tensor(mean)
+        
+        log_std = self.clamp_log_std(torch.log(std))   #The log of the standard deviation must be clamped not the standard deviation
+        std = torch.exp(log_std)
+        dist = torch.distributions.normal.Normal(mean, std)
 
-            if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
-                #action = np.random.normal(mean,std)
-                #eps = np.random.normal(0,1)
-                #action = std*eps + mean
-                # Any distribution with .has_rsample == True could work based on the application
-                action = dist.rsample() #rsample includes the reparametrization trick
-                action = torch.tanh(action)
-                #action = torch.normal(mean, std)
-                #action = torch.tanh(action)
+        if deterministic == False:  #We aren't sure about the placement of the clamping, as it makes a difference for the probability, what its std is
+            #action = np.random.normal(mean,std)
+            #eps = np.random.normal(0,1)
+            #action = std*eps + mean
+            # Any distribution with .has_rsample == True could work based on the application
+            action = dist.rsample() #rsample includes the reparametrization trick
+            action = torch.tanh(action)
+            #action = torch.normal(mean, std)
+            #action = torch.tanh(action)
 
-            else:
-                action = mean
+        else:
+            action = mean
 
-                        
-            log_prob = dist.log_prob(action)
+                    
+        log_prob = dist.log_prob(action)
             
             # print("m:", mean)
             # print("action is:", action)
@@ -386,7 +386,7 @@ class Agent:
         q1_loss = nn.functional.mse_loss(qf1, next_q_value)  
         q2_loss = nn.functional.mse_loss(qf2,next_q_value)
 
-        #print("q1 loss", q1_loss)
+        print("q1 loss", q1_loss)
 
         self.run_gradient_update_step(self.critic_Q1, q1_loss)
         self.run_gradient_update_step(self.critic_Q2, q2_loss)
@@ -401,8 +401,12 @@ class Agent:
 
         
         print("-------- Training Policy Network ---------- ")
+        
+        results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
+        actions = self.actor.NN_actor(s_batch)
+
         with torch.no_grad():
-            results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
+            #results_list2 = [self.actor.get_action_and_log_prob(state, False) for state in s_batch]
 
             sampled_action, sampled_log_prob = zip(*results_list2) #self.actor.get_action_and_log_prob(state=s_batch, deterministic=False)
         
